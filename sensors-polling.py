@@ -81,7 +81,7 @@ def sensors_polling(poller_conf):
         # Polling
         try:
             logging.debug('Getting data for '+poller_conf['name'])
-            command = [poller_conf['script']] + poller_conf['arguments']
+            command = [poller_conf['executable']] + poller_conf['arguments']
             returned_output = subprocess.check_output(command)
             data = json.loads(returned_output.decode("utf-8"))
             logging.debug('Got: '+returned_output.decode("utf-8"))
