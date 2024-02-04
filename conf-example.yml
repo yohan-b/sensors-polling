@@ -1,0 +1,26 @@
+http_port: 3000
+
+polling_conf:
+  - name: teleinfo
+    metrics:
+      - name: Modane_elec_main_power
+        type: int
+      - name: Modane_elec_energy_index
+        type: int
+    script: ./get-teleinfo.py
+    arguments:
+      - "-f"
+      - "custom_json"
+    # interval between sensors polling in seconds
+    polling_interval: 10.0
+
+# Default interval between sending to record API in seconds
+default_recording_interval: 600.0
+
+# Default interval between sensors polling in seconds
+default_polling_interval: 600.0
+
+recording_api_key: "FIXME"
+post_url:
+  int: "http://ovh1.scimetis.net:3001/integer_metric/add"
+  float: "http://ovh1.scimetis.net:3001/float_metric/add"
