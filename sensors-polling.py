@@ -126,7 +126,11 @@ def sensors_polling(poller_conf):
         stop.wait(timeout=time_to_sleep)
 
 def metric_list():
-    return([metric['name'] for metric in poller_conf['metrics']])
+    metrics = []
+    for poller_conf in polling_conf:
+        for metric in poller_conf['metrics']:
+            metrics.append(metric['name'])
+    return metrics
 
 class MyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
