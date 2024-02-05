@@ -6,16 +6,18 @@ import json
 import subprocess
 import sys
 
-parser = argparse.ArgumentParser(description='Read one-wire sensor.')
+parser = argparse.ArgumentParser(description='Read Yocto sensor.')
 parser.add_argument('metric', type=str,
                     help='Metric name.')
-parser.add_argument('path', type=str,
-                    help='owfs sensor path.')
+parser.add_argument('binary', type=str,
+                    help='Yocto binary.')
+parser.add_argument('sensor', type=str,
+                    help='Sensor name.')
 
 args = parser.parse_args()
 
 try:
-  returned_output = subprocess.check_output(["/usr/bin/owread", "-s", "localhost:4304", args.path])
+  returned_output = subprocess.check_output(["/usr/local/YoctoLib.cmdline.24497/Binaries/linux/32bits/"+args.binary, "-r", "localhost", "-f", "[result]", args.sensor, "get_currentValue"])
   try:
       value = round(float(returned_output.decode("utf-8").strip().strip("'")), 1)
   except ValueError:
@@ -26,9 +28,5 @@ except Exception as e:
   sys.exit(1)
 
 data = {}
-if "luminosity" in args.metric:
-  # conversion en lm
-  data[args.metric] = int(float(value) * 122900.45063498567)
-else:
-  data[args.metric] = value
+data[args.metric] = value
 print(json.dumps(data))
