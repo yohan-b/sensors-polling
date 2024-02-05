@@ -11,21 +11,32 @@ import subprocess
 import argparse
 import threading
 import socketserver
+import sys
 from http.server import BaseHTTPRequestHandler
 from threading import Event
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
+
+xprint_lock = Lock()
+
+def xprint(*args, **kwargs):
+    """Thread safe print function"""
+    with xprint_lock:
+        print(*args, **kwargs)
+        sys.stdout.flush()
 
 parser = argparse.ArgumentParser(description='Sensors polling and metrics recording.')
 parser.add_argument("-v", "--verbosity", help="Increase output verbosity",
                     type=str, choices=['DEBUG', 'INFO', 'WARNING'], default='INFO')
 args = parser.parse_args()
 
-if args.verbosity == 'DEBUG':
+verbosity = args.verbosity
+if verbosity == 'DEBUG':
     logging.basicConfig(level=logging.DEBUG)
-elif args.verbosity == 'INFO':
+elif verbosity == 'INFO':
     logging.basicConfig(level=logging.INFO)
-elif args.verbosity == 'WARNING':
+elif verbosity == 'WARNING':
     logging.basicConfig(level=logging.WARNING)
 
 logging.info("====== Starting ======")
@@ -146,6 +157,13 @@ class MyHandler(BaseHTTPRequestHandler):
             self.wfile.write(bytes(json.dumps(last_data[self.path[1:]])+'\n', 'utf-8'))
         else:
             self.send_response(404)
+    # This rewrites the BaseHTTP logging function
+    def log_message(self, format, *args):
+        if verbosity == 'INFO':
+            xprint("%s - - [%s] %s" %
+                 (self.address_string(),
+                  self.log_date_time_string(),
+                  format%args))
 
 class WebThread(threading.Thread):
     def run(self):
