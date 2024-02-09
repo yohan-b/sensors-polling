@@ -17,7 +17,7 @@ args = parser.parse_args()
 try:
   returned_output = subprocess.check_output(["/usr/bin/owread", "-s", "localhost:4304", args.path])
   try:
-      value = round(float(returned_output.decode("utf-8").strip().strip("'")), 1)
+      value = float(returned_output.decode("utf-8").strip().strip("'"))
   except ValueError:
       print ("Got garbage: "+returned_output)
       sys.exit(1)
@@ -30,5 +30,5 @@ if "luminosity" in args.metric:
   # conversion en lm
   data[args.metric] = int(float(value) * 122900.45063498567)
 else:
-  data[args.metric] = value
+  data[args.metric] = round(value, 1)
 print(json.dumps(data))
