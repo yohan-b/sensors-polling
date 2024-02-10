@@ -32,23 +32,34 @@ parser.add_argument("-v", "--verbosity", help="Increase output verbosity",
 args = parser.parse_args()
 
 verbosity = args.verbosity
-if verbosity == 'DEBUG':
-    logging.basicConfig(level=logging.DEBUG)
-elif verbosity == 'INFO':
-    logging.basicConfig(level=logging.INFO)
-elif verbosity == 'WARNING':
-    logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger('sensors-polling')
 
-logging.info("====== Starting ======")
+if verbosity == 'DEBUG':
+    logger.setLevel(logging.DEBUG)
+elif verbosity == 'INFO':
+    logger.setLevel(logging.INFO)
+elif verbosity == 'WARNING':
+    logger.setLevel(logging.WARNING)
+
+# create console handler
+ch = logging.StreamHandler()
+# create formatter
+formatter = logging.Formatter('[%(levelname)s] %(name)s: [%(threadName)s] %(message)s')
+# add formatter to ch
+ch.setFormatter(formatter)
+# add ch to logger
+logger.addHandler(ch)
+
+logger.info("====== Starting ======")
 
 stop = Event()
 last_data = {}
 
 def handler(signum, frame):
     global stop
-    logging.info("Got interrupt: "+str(signum))
+    logger.info("Got interrupt: "+str(signum))
     stop.set()
-    logging.info("Shutdown")
+    logger.info("Shutdown")
 
 signal.signal(signal.SIGTERM,handler)
 signal.signal(signal.SIGINT,handler)
@@ -82,58 +93,68 @@ def sensors_polling(poller_conf):
 
     while True:
         if stop.is_set():
-            logging.info('Stopping thread '+poller_conf['name'])
+            logger.info('Stopping thread '+poller_conf['name'])
             break
-        logging.debug('New while loop for '+poller_conf['name'])
+        logger.debug('New while loop for '+poller_conf['name'])
         utc_now = datetime.utcnow()
         now = datetime.now()
         current_time=time.time()
+        logger.debug('current_time: '+str(current_time))
 
         # Polling
         try:
-            logging.debug('Getting data for '+poller_conf['name'])
+            logger.debug('Getting data for '+poller_conf['name'])
             command = [poller_conf['executable']] + poller_conf['arguments']
             returned_output = subprocess.check_output(command)
             data = json.loads(returned_output.decode("utf-8"))
-            logging.debug('Got: '+returned_output.decode("utf-8"))
+            logger.debug('Got: '+returned_output.decode("utf-8"))
             for metric in poller_conf['metrics']:
                 last_data[metric['name']] = {'value': data[metric['name']], 'timestamp': utc_now.isoformat()}
             last_polling_time=time.time()
+            logger.debug('last_polling_time: '+str(last_polling_time))
         except Exception as e:
-            logging.error(e)
+            logger.error(e)
         if last_polling_time is None:
             polling_missed = int((current_time - start_time) // polling_interval)
         else:
             polling_missed = int((current_time - last_polling_time) // polling_interval)
         if polling_missed > 0:
-            logging.warning("Missed "+str(polling_missed)+" polling iteration(s)")
+            logger.warning("Missed "+str(polling_missed)+" polling iteration(s)")
 
         # Recording
-        if last_polling_time is not None and (last_recording_time is None or (current_time - last_recording_time > recording_interval and last_polling_time > last_recording_time + recording_interval/2)):
-            try:
-                for metric in poller_conf['metrics']:
-                    logging.debug('Posting data for '+metric['name'])
-                    r = s.post(post_url[metric['type']],
-                               headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:75.0) Gecko/20100101 Firefox/75.0',
-                                        'X-API-KEY': recording_api_key},
-                               json={'metric': metric['name'],
-                                     'value': last_data[metric['name']]['value'],
-                                     'time': utc_now.isoformat()})
-                    if r.status_code != 201:
-                        logging.error(str(r.status_code)+" "+r.reason)
-                last_recording_time=time.time()
-            except Exception as e:
-                logging.error(e)
+        if last_polling_time is not None:
+            if last_recording_time is not None:
+                recording_interval_elapsed = (current_time - last_recording_time > recording_interval)
+                polling_recent_enough = (last_polling_time > last_recording_time + recording_interval/2)
+                logger.debug('recording_interval_elapsed: '+str(recording_interval_elapsed))
+                logger.debug('polling_recent_enough: '+str(polling_recent_enough))
+            if last_recording_time is None or (recording_interval_elapsed and polling_recent_enough):
+                try:
+                    for metric in poller_conf['metrics']:
+                        logger.debug('Posting data for '+metric['name'])
+                        r = s.post(post_url[metric['type']],
+                                   headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:75.0) Gecko/20100101 Firefox/75.0',
+                                            'X-API-KEY': recording_api_key},
+                                   json={'metric': metric['name'],
+                                         'value': last_data[metric['name']]['value'],
+                                         'time': utc_now.isoformat()})
+                        if r.status_code != 201:
+                            logger.error(str(r.status_code)+" "+r.reason)
+                    # It has to be current_time variable so the interval check works correctly
+                    last_recording_time=current_time
+                    logger.debug('last_recording_time: '+str(last_recording_time))
+                except Exception as e:
+                    logger.error(e)
         if last_recording_time is None:
             recording_missed = int((current_time - start_time) // recording_interval)
         else:
             recording_missed = int((current_time - last_recording_time) // recording_interval)
         if recording_missed > 0:
-            logging.warning("Missed "+str(recording_missed)+" recording iteration(s)")
+            logger.warning("Missed "+str(recording_missed)+" recording iteration(s)")
 
         # Sleeping
         time_to_sleep = polling_interval - ((current_time - start_time) % polling_interval)
-        logging.debug('Sleeping '+str(time_to_sleep)+' seconds for '+poller_conf['name'])
+        logger.debug('Sleeping '+str(time_to_sleep)+' seconds for '+poller_conf['name'])
         stop.wait(timeout=time_to_sleep)
 
 def metric_list():
@@ -181,7 +202,7 @@ threads = []
 for poller_conf in polling_conf:
     threads.append(executor.submit(sensors_polling, poller_conf))
 
-logging.info("Polling "+str(metric_list()))
+logger.info("Polling "+str(metric_list()))
 
 while True:
     if stop.is_set():
@@ -194,11 +215,11 @@ while True:
             try:
                 res = thread.exception(timeout=1)
                 if res is not None:
-                    logging.error(res)
+                    logger.error(res)
             except Exception as e:
-                logging.error(e)
+                logger.error(e)
     stop.wait(timeout=0.5)
 
-logging.info("====== Ended successfully ======")
+logger.info("====== Ended successfully ======")
 
 # vim: set ts=4 sw=4 sts=4 et :
